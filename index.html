@@ -267,10 +267,11 @@ tbody td{padding:8px 12px;vertical-align:middle}
       <select id="fStatus" onchange="applyF()" style="padding:6px 10px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);color:var(--tx);font-family:inherit;font-size:12px">
         <option value="">All Statuses</option>
         <option value="open">Open</option>
-        <option value="close">Close</option>
-        <option value="change">Change Delivery</option>
+        <option value="closed">Closed</option>
         <option value="reschedule">Reschedule</option>
-        <option value="delivered">Delivered</option>
+        <option value="duplicate">Duplicate</option>
+        <option value="e-commerce">E-Commerce</option>
+        <option value="installation">Installation</option>
       </select>
       <select id="fDoPic" onchange="applyF()" style="padding:6px 10px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);color:var(--tx);font-family:inherit;font-size:12px">
         <option value="">All DO PICs</option>
@@ -644,13 +645,14 @@ tbody td{padding:8px 12px;vertical-align:middle}
       </div>
       <div class="fg full hidden" id="a_or"><label>Specify type<span class="req">*</span></label><input type="text" id="a_ov" placeholder="Describe the delivery type..."/></div>
       <div class="fg full">
-        <label>OOS Items <span style="font-weight:400;color:var(--tx2);font-size:11px">(type item name + Enter to add, can add multiple)</span></label>
+        <label>OOS Items <span style="font-weight:400;color:var(--tx2);font-size:11px">(select existing or type new name + Enter)</span></label>
         <div class="oos-chip-wrap" id="a_oos_wrap" onclick="document.getElementById('a_oos_inp').focus()">
-          <input type="text" id="a_oos_inp" class="oos-chip-input" placeholder="Type OOS item and press Enter..."
+          <input type="text" id="a_oos_inp" class="oos-chip-input" placeholder="Select or type new OOS item, press Enter to add..."
             onkeydown="oosChipKey(event,'a_oos_wrap','a_oos_inp')"
             list="oos_datalist"/>
         </div>
         <datalist id="oos_datalist"></datalist>
+        <div style="font-size:11px;color:var(--tx2);margin-top:4px">💡 If typing a new item not in the list — just type the name and press <strong>Enter</strong>. A new OOS card will be created automatically.</div>
       </div>
       <div class="fg full"><label>Remarks</label><textarea id="a_rm" placeholder="Special instructions, timing, notes..."></textarea></div>
     </div>
@@ -697,18 +699,23 @@ tbody td{padding:8px 12px;vertical-align:middle}
       </div>
       <div class="fg full hidden" id="e_or"><label>Specify type</label><input type="text" id="e_ov"/></div>
       <div class="fg full">
-        <label>OOS Items <span style="font-weight:400;color:var(--tx2);font-size:11px">(type + Enter to add multiple)</span></label>
+        <label>OOS Items <span style="font-weight:400;color:var(--tx2);font-size:11px">(select existing or type new name + Enter)</span></label>
         <div class="oos-chip-wrap" id="e_oos_wrap" onclick="document.getElementById('e_oos_inp').focus()">
-          <input type="text" id="e_oos_inp" class="oos-chip-input" placeholder="Type OOS item and press Enter..."
+          <input type="text" id="e_oos_inp" class="oos-chip-input" placeholder="Select or type new OOS item, press Enter to add..."
             onkeydown="oosChipKey(event,'e_oos_wrap','e_oos_inp')"
             list="oos_datalist"/>
         </div>
+        <div style="font-size:11px;color:var(--tx2);margin-top:4px">💡 New item not in list? Type the name and press <strong>Enter</strong> — a new OOS card will be created automatically.</div>
       </div>
       <div class="fg full"><label>Remarks</label><textarea id="e_rm"></textarea></div>
       <div class="fg full"><label>Status</label>
         <select id="e_st">
-          <option>Close</option><option>Open</option><option>Delivered</option>
-          <option>Change Delivery Date</option><option>Reschedule</option>
+          <option>Open</option>
+          <option>Closed</option>
+          <option>Reschedule</option>
+          <option>Duplicate</option>
+          <option>E-Commerce</option>
+          <option>Installation</option>
         </select>
       </div>
       <div class="fg" style="align-items:center;display:flex;gap:12px;padding-top:6px">
@@ -1637,14 +1644,22 @@ function viewOOSDet(name){
   // Store current item name for save function
   window._currentOosDetItem = name;
   _oosEntryFilter = 'all';
-  // Show delete button only if no pending DOs and no open entries
+  // Always show delete button — warn if has pending DOs or open entries
   setTimeout(()=>{
     const btn = document.getElementById('deleteOosItemBtn');
     if(!btn) return;
     const hasPendingDOs = affDOs.length > 0;
     const hasOpenEntries = dataRows.some(r => String(r[8]||'').toLowerCase() !== 'closed');
-    btn.style.display = (!hasPendingDOs && !hasOpenEntries) ? 'block' : 'none';
-    btn.title = hasPendingDOs ? 'Cannot delete — has pending DOs' : hasOpenEntries ? 'Cannot delete — has open entries' : 'Delete this OOS item permanently';
+    btn.style.display = 'block';
+    if(hasPendingDOs || hasOpenEntries){
+      btn.style.opacity = '0.4';
+      btn.title = hasPendingDOs ? 'Has '+affDOs.length+' pending DOs — close them first' : 'Has open entries — close them first';
+      btn.onclick = function(){ alert('Cannot delete — '+(hasPendingDOs ? affDOs.length+' pending delivery orders exist for this item.' : 'there are still open tracking entries. Close them first.')); };
+    } else {
+      btn.style.opacity = '1';
+      btn.title = 'Delete this OOS item permanently';
+      btn.onclick = deleteOosItem;
+    }
   }, 50);
   // Load ETA panel
   const oosDataForEta = (EMBEDDED&&EMBEDDED.oos) ? EMBEDDED.oos : {};
@@ -1892,7 +1907,10 @@ function autoAddOosEntry(itemName, r){
     nr[0]=String(existing.length+1); nr[1]=r.customer||''; nr[2]=r.so||'';
     nr[3]=r.dono||''; nr[5]=r.date||''; nr[7]=r.recpic||''; nr[8]='Open';
     oosData[targetSheet].push(nr);
-    if(GU) push('addOOS',{item:targetSheet,customer:r.customer,so:r.so,dono:r.dono,date:r.date,recpic:r.recpic});
+    // Refresh OOS grid so new card appears immediately
+    setTimeout(()=>renderOOS(document.getElementById('oosQ')?document.getElementById('oosQ').value:''),200);
+    const isNew = !matchSheet;
+    setSy('ok', isNew ? 'New OOS item "'+targetSheet+'" created!' : 'Entry added to "'+targetSheet+'"');
   }
 }
 function deleteOosItem(){
