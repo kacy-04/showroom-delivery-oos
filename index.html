@@ -1897,18 +1897,20 @@ function autoAddOosEntry(itemName, r){
 }
 function deleteOosItem(){
   const name = window._currentOosDetItem;
-  if(!name) return;
-  if(!confirm('Delete OOS item "'+name+'" and all its entries? This cannot be undone.')) return;
-  // Remove from EMBEDDED
+  if(!name){ alert('No item selected'); return; }
+  const ok = window.confirm('Delete OOS item "'+name+'" and all its entries? This cannot be undone.');
+  if(!ok) return;
   const oosData = (EMBEDDED&&EMBEDDED.oos) ? EMBEDDED.oos : {};
   delete oosData[name];
   const sheets = EMBEDDED.oosSheets || [];
   const idx = sheets.indexOf(name);
   if(idx > -1) sheets.splice(idx, 1);
-  // Close modal and refresh
+  window._currentOosDetItem = null;
   cm('mOosDet');
-  renderOOS(document.getElementById('oosQ').value||'');
-  setSy('ok', '"'+name+'" deleted');
+  setTimeout(()=>{
+    renderOOS(document.getElementById('oosQ').value||'');
+    setSy('ok', '"'+name+'" deleted successfully');
+  }, 100);
 }
 
 function filterOOS(){renderOOS(document.getElementById('oosQ').value);}
