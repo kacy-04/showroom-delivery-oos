@@ -1924,17 +1924,23 @@ function deleteOosItem(){
   if(!name){ alert('No item selected'); return; }
   const ok = window.confirm('Delete OOS item "'+name+'" and all its entries? This cannot be undone.');
   if(!ok) return;
+  // Remove from EMBEDDED
   const oosData = (EMBEDDED&&EMBEDDED.oos) ? EMBEDDED.oos : {};
   delete oosData[name];
   const sheets = EMBEDDED.oosSheets || [];
   const idx = sheets.indexOf(name);
   if(idx > -1) sheets.splice(idx, 1);
+  // Remove from Firebase
+  const safeKey = name.replace(/[.#$\/\[\]]/g,'_');
+  DB.ref('oos/'+safeKey).remove();
+  logActivity('delete OOS item', name);
   window._currentOosDetItem = null;
-  cm('mOosDet');
-  setTimeout(()=>{
-    renderOOS(document.getElementById('oosQ').value||'');
-    setSy('ok', '"'+name+'" deleted successfully');
-  }, 100);
+  // Close modal first, then re-render
+  document.getElementById('mOosDet').classList.add('hidden');
+  renderOOS('');
+  const q = document.getElementById('oosQ');
+  if(q) q.value='';
+  setSy('ok', '"'+name+'" deleted successfully');
 }
 
 function filterOOS(){renderOOS(document.getElementById('oosQ').value);}
@@ -2920,16 +2926,18 @@ function renderActivityLog(){
   const el = document.getElementById('logCurrentUser');
   if(el) el.innerHTML = '👤 You are logged in as: <strong>'+x(CURRENT_USER||'Not set')+'</strong> — all your edits will be shown with this name.';
 
-  DB.ref('activity').orderByChild('ts').limitToLast(200).once('value').then(snap=>{
+  // Listen real-time instead of once
+  DB.ref('activity').orderByChild('ts').limitToLast(200).on('value', snap=>{
     const entries=[];
     snap.forEach(c=>entries.push(c.val()));
     entries.reverse();
     const tbody=document.getElementById('logTbody');
+    if(!tbody) return;
     if(!entries.length){
       tbody.innerHTML='<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--tx2)">No activity yet</td></tr>';
       return;
     }
-    const actionCol={edit:'#0d6efd',add:'#198754',delete:'#dc3545'};
+    const actionCol={'edit':'#0d6efd','add DO':'#198754','delete DO':'#dc3545','add OOS entry':'#198754','edit OOS entry':'#0d6efd','delete OOS entry':'#dc3545','delete OOS item':'#dc3545'};
     tbody.innerHTML=entries.map(e=>{
       const d=new Date(e.time);
       const timeStr=d.toLocaleDateString('en-SG',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-SG',{hour:'2-digit',minute:'2-digit'});
@@ -2941,8 +2949,6 @@ function renderActivityLog(){
         '<td style="padding:8px 12px;color:var(--tx2);font-size:12px">'+x(e.detail||'')+'</td>'+
       '</tr>';
     }).join('');
-  }).catch(e=>{
-    document.getElementById('logTbody').innerHTML='<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--tx2)">Could not load log: '+e.message+'</td></tr>';
   });
 }
 
