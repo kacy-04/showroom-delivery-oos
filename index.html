@@ -902,13 +902,14 @@ function stamp(){ return {by:ensureUser(), at:new Date().toISOString()}; }
 
 // ── ACTIVITY LOG ─────────────────────────────────────────────
 function logActivity(action, detail){
-  const user = ensureUser();
+  const user = CURRENT_USER || 'Unknown';
+  if(!user || !DB) return;
   const entry = {
     user, action, detail,
     time: new Date().toISOString(),
     ts: Date.now()
   };
-  DB.ref('activity').push(entry);
+  DB.ref('activity').push(entry).catch(e=>console.warn('logActivity failed:',e));
 }
 const PSZ=75;
 const WD=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -1035,6 +1036,55 @@ function fbSeedData(){
 function fbListen(){
   if(_fbListening)return;
   _fbListening=true;
+
+  // Listen for deleted OOS items + load saved OOS edits from Firebase
+  DB.ref('deletedOOS').once('value').then(delSnap=>{
+    const deleted = delSnap.val() || {};
+
+    // Load OOS entry edits saved to Firebase
+    DB.ref('oos').once('value').then(oosSnap=>{
+      const fbOos = oosSnap.val() || {};
+      // Merge Firebase OOS edits into EMBEDDED
+      Object.keys(fbOos).forEach(safeKey=>{
+        // Find original item name from EMBEDDED
+        const entries = fbOos[safeKey];
+        // Find matching sheet name
+        const match = EMBEDDED.oosSheets && EMBEDDED.oosSheets.find(s=>s.replace(/[.#$\/\[\]]/g,'_')===safeKey);
+        if(match && entries) EMBEDDED.oos[match] = entries;
+      });
+
+      // Remove deleted items
+      Object.keys(deleted).forEach(safeKey=>{
+        const name = deleted[safeKey];
+        const oidx = OOSN.indexOf(name);
+        if(oidx > -1) OOSN.splice(oidx, 1);
+        if(EMBEDDED.oos) delete EMBEDDED.oos[name];
+        if(EMBEDDED.oosSheets){
+          const si = EMBEDDED.oosSheets.indexOf(name);
+          if(si > -1) EMBEDDED.oosSheets.splice(si, 1);
+        }
+      });
+
+      renderOOS('');
+    });
+  });
+
+  // Keep listening for new deletions
+  DB.ref('deletedOOS').on('value', snap=>{
+    const deleted = snap.val() || {};
+    Object.keys(deleted).forEach(safeKey=>{
+      const name = deleted[safeKey];
+      const oidx = OOSN.indexOf(name);
+      if(oidx > -1) OOSN.splice(oidx, 1);
+      if(EMBEDDED.oos) delete EMBEDDED.oos[name];
+      if(EMBEDDED.oosSheets){
+        const si = EMBEDDED.oosSheets.indexOf(name);
+        if(si > -1) EMBEDDED.oosSheets.splice(si, 1);
+      }
+    });
+    renderOOS('');
+  });
+
   DB.ref('delivery/rows').on('value',snap=>{
     const data=snap.val();
     if(!data)return;
@@ -1933,9 +1983,9 @@ function deleteOosItem(){
   // Also remove from OOSN (the array renderOOS uses)
   const oidx = OOSN.indexOf(name);
   if(oidx > -1) OOSN.splice(oidx, 1);
-  // Remove from Firebase
+  // Save deletion to Firebase permanently
   const safeKey = name.replace(/[.#$\/\[\]]/g,'_');
-  DB.ref('oos/'+safeKey).remove();
+  DB.ref('deletedOOS/'+safeKey).set(name);
   logActivity('delete OOS item', name);
   window._currentOosDetItem = null;
   // Close modal first, then re-render
