@@ -987,7 +987,6 @@ function fbInit(){
   if(_fbInitialised)return;
   _fbInitialised=true;
 
-  // Timeout — if Firebase doesn't respond in 8s, use embedded data
   const timeout = setTimeout(()=>{
     console.warn('Firebase timeout — using embedded data');
     setSy('warn','Offline — using embedded data');
@@ -995,14 +994,18 @@ function fbInit(){
 
   DB.ref('delivery/meta').once('value').then(snap=>{
     clearTimeout(timeout);
-    if(snap.exists()){
-      fbListen();
-    } else {
+    const fbCount = snap.exists() ? (snap.val().count||0) : 0;
+    const embCount = EMBEDDED.rows.length;
+    // If embedded has more rows than Firebase, re-seed
+    if(!snap.exists() || embCount > fbCount){
+      console.log('Re-seeding: Firebase has '+fbCount+', embedded has '+embCount);
       fbSeedData();
+    } else {
+      fbListen();
     }
   }).catch(e=>{
     clearTimeout(timeout);
-    console.error('Firebase error:',e.message, e.code);
+    console.error('Firebase error:',e.message);
     setSy('warn','Firebase: '+e.message);
   });
 }
